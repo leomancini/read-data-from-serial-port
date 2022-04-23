@@ -1,49 +1,56 @@
 async function listenForChanges(reader) {
-    while (true) {
-        const { value, done } = await reader.read();
+	while (true) {
+		const { value, done } = await reader.read();
 
-        if (done) {
-            reader.releaseLock();
-            break;
-        }
+		if (done) {
+			reader.releaseLock();
+			break;
+		}
 
-        setValue({
-            type: 'update',
-            value
-        });
-    }
+		setValue({
+			type: 'update',
+			value
+		});
+	}
 }
 
 function setValue(params) {
-    let string = new TextDecoder().decode(params.value);
-    let integer = Math.round(parseInt(string));
+	let stringDecoded = new TextDecoder().decode(params.value);
+    let stringParsed = stringDecoded.split('\r\n')[0];
+    let values = stringParsed.split(',');
 
-    if (integer && integer !== null) {
-        if (params.type === 'initialize') {
-            console.log(`initial value: ${integer}`);
+    values.forEach((rawValue, index) => {
+        let value = Math.round(parseInt(rawValue));
 
-            updateObjects(integer);
-            window.value = integer;
-        } else {
-            if (Math.abs(window.value - integer) >= 3 && Math.abs(window.value - integer) < 20) {
-                updateObjects(integer);
-                window.value = integer;
+        if (value && value !== null) {
+            if (params.type === 'initialize') {
+                console.log(`initial value: ${value}`);
+
+                updateObjects(index, value);
+                window.values[index] = value;
+            } else {
+                if (Math.abs(window.values[index] - value) >= 5 && Math.abs(window.values[index] - value) < 20) {
+                    updateObjects(index, value);
+                    window.values[index] = value;
+                }
             }
         }
-
-    }
+    });
 }
 
-function updateObjects(integer) {
-    if (!isNaN(integer)) {
-        let degrees = convertRange(integer, [0, 1024], [0, 360]);
-        degrees = Math.round(degrees);
+function updateObjects(index, value) {
+	if (!isNaN(value)) {
+		let degrees = convertRange(value, [0, 1024], [0, 360]);
+		degrees = Math.round(degrees);
 
-        document.querySelector('#output').innerText = degrees;
-        console.log(degrees);
+		document.querySelector('#output').innerText = degrees;
 
-        document.querySelector('#object').style = `transform: translate(-50%, -50%) rotate(${degrees}deg);`
-    }
+        if (index === 0) {
+    		document.querySelector('#object0').style = `transform: rotate(${degrees}deg);`
+        } else if (index === 1) {
+            document.querySelector('#object1').style = `transform: rotate(${degrees}deg);`
+        }
+	}
 }
 
 function convertRange( value, r1, r2 ) { 
@@ -51,26 +58,33 @@ function convertRange( value, r1, r2 ) {
 }
 
 document.querySelector('button').addEventListener('click', async () => {
-    // Prompt user to select any serial port.
-    const port = await navigator.serial.requestPort();
+	await navigator.serial.requestPort();
+    await initialize();
 });
 
 async function initialize() {
-    if ('serial' in navigator) {
-        const ports = await navigator.serial.getPorts();
-        const port = ports[0];
-        await port.open({ baudRate: 9600 });
+	if ('serial' in navigator) {
+        window.values = [];
 
-        const reader = port.readable.getReader();
-        const { value, done } = await reader.read();
+		const ports = await navigator.serial.getPorts();
 
-        setValue({
-            type: 'initialize',
-            value
-        });
+        if (ports) {
+            const port = ports[0];
+            await port.open({ baudRate: 9600 });
 
-        listenForChanges(reader);
-    }
+            const reader = port.readable.getReader();
+            const { value, done } = await reader.read();
+
+            setValue({
+                type: 'initialize',
+                value
+            });
+
+            listenForChanges(reader);
+
+            document.querySelector('button').style.opacity = 0;
+        }
+	}
 }
 
 initialize();
